@@ -1,11 +1,11 @@
 use crate::{Context, PageType};
 use crate::{Crawler, Respond};
-use reqwest::{Client, Response};
+use reqwest::{Client};
 use scraper::{ElementRef, Selector};
 use std::fmt::Display;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock, RwLockReadGuard};
+use std::sync::{Arc};
 use std::time::Duration;
 use tokio::time::sleep;
 use url::Url;

@@ -1,10 +1,10 @@
-use crate::{Handlers, ResponseHandlers, SelectorHandlerPairs};
+use crate::{Handlers};
 use backoff::ExponentialBackoff;
 use log::{error, warn};
 use reqwest::header::HeaderMap;
 use reqwest::{Client, Response, StatusCode};
 use scraper::Html;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
 use tokio::sync::Semaphore;
 use url::Url;
 

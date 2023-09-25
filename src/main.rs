@@ -44,9 +44,9 @@ impl Scraper for Foo {
             },
         )
         .on_response(
-            |ctx, resp| Some(resp.url.clone()),
-            |ctx, crawler, foo| async move {
-                info!("{}, {}", foo, ctx.state.foo.fetch_add(1, Relaxed))
+            |_ctx, resp| Some(resp.url.clone()),
+            |ctx, _crawler, url| async move {
+                info!("{}, {}", url, ctx.state.foo.fetch_add(1, Relaxed))
             },
         );
     }
