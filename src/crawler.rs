@@ -1,10 +1,13 @@
-use crate::{Handlers};
+use crate::{Context, Handlers, PageType};
 use backoff::ExponentialBackoff;
+use bytes::Bytes;
+use encoding_rs::{Encoding, UTF_8};
 use log::{error, warn};
+use mime::Mime;
 use reqwest::header::HeaderMap;
 use reqwest::{Client, Response, StatusCode};
 use scraper::Html;
-use std::sync::{Arc};
+use std::sync::Arc;
 use tokio::sync::Semaphore;
 use url::Url;
 
@@ -13,7 +16,7 @@ pub struct Respond {
     pub content_length: Option<u64>,
     pub header: HeaderMap,
     pub status: StatusCode,
-    pub text: String,
+    pub bytes: Bytes,
 }
 
 impl Respond {
@@ -23,77 +26,57 @@ impl Respond {
             content_length: value.content_length().take(),
             header: value.headers().clone(),
             status: value.status(),
-            text: value.text().await.ok()?,
+            bytes: value.bytes().await.ok()?,
         })
+    }
+
+    fn text(&self) -> String {
+        let content_type = self
+            .header
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<Mime>().ok());
+        let encoding_name = content_type
+            .as_ref()
+            .and_then(|mime| mime.get_param("charset").map(|charset| charset.as_str()))
+            .unwrap_or("utf-8");
+        let encoding = Encoding::for_label(encoding_name.as_bytes()).unwrap_or(UTF_8);
+        let (text, _, _) = encoding.decode(&self.bytes);
+        text.into_owned()
     }
 }
 
-pub struct NewsData {}
-
-pub struct PersonData {}
-
-pub struct ReportData {}
-
-pub enum PageType {
-    Index,
-    News(Box<NewsData>),
-    Person(Box<PersonData>),
-    Report(Box<ReportData>),
-}
-
-pub struct Context<T: Sync + Send> {
-    pub state: Arc<T>,
-    pub page_type: PageType,
-    pub current_address: Url,
-}
-
-pub struct Crawler<T: Sync + Send> {
+pub struct Crawler {
     pub(crate) semaphore: Arc<Semaphore>,
     pub(crate) max_permit: usize,
-    handlers: Arc<Handlers<T>>,
-    custom_state: Arc<T>,
+    handlers: Arc<Handlers>,
     client: Arc<Client>,
 }
 
-impl<T: 'static + Sync + Send> Crawler<T> {
-    pub fn new(
-        max_permit: usize,
-        handlers: Arc<Handlers<T>>,
-        custom_state: Arc<T>,
-        client: Arc<Client>,
-    ) -> Crawler<T> {
+impl Crawler {
+    pub fn new(max_permit: usize, handlers: Arc<Handlers>, client: Arc<Client>) -> Crawler {
         Crawler {
             semaphore: Arc::from(Semaphore::new(max_permit)),
             max_permit,
             handlers,
-            custom_state,
             client,
         }
     }
 
-    pub async fn visit(self: Arc<Self>, url: Url, page_type: PageType) {
+    pub async fn visit(self: Arc<Self>, url: &Url, page_type: PageType) {
         let semaphore = self.semaphore.clone();
-        let custom_state = self.custom_state.clone();
         let client = self.client.clone();
         let handlers = self.handlers.clone();
-        self.visit_worker(
-            url,
-            page_type,
-            semaphore,
-            handlers,
-            custom_state,
-            client,
-        )
-        .await
+        self.visit_worker(url, page_type, semaphore, handlers, client)
+            .await
     }
 
     async fn visit_worker(
         self: Arc<Self>,
-        url: Url,
+        url: &Url,
         page_type: PageType,
         semaphore: Arc<Semaphore>,
-        handlers: Arc<Handlers<T>>,
-        custom_state: Arc<T>,
+        handlers: Arc<Handlers>,
         client: Arc<Client>,
     ) {
         let _permit = semaphore.acquire().await.unwrap();
@@ -109,19 +92,19 @@ impl<T: 'static + Sync + Send> Crawler<T> {
                     warn!("Invalid Content type at {}", url_str);
                     return
                 };
-                let respond = Arc::new(respond);
-                let fragment = Html::parse_document(respond.text.as_str());
+                let fragment = Html::parse_document(&respond.text());
                 let ctx = Arc::new(Context {
-                    state: custom_state,
                     page_type,
                     current_address: respond.url.clone(),
                 });
 
-                handlers.response_handler
+                handlers
+                    .response_handler
                     .iter()
-                    .for_each(|handler| handler(ctx.clone(), self.clone(), respond.clone()));
+                    .for_each(|handler| handler(ctx.clone(), self.clone(), &respond));
 
-                handlers.selector_handler
+                handlers
+                    .selector_handler
                     .iter()
                     .map(|(sel, handler)| (fragment.select(sel), handler))
                     .for_each(|(select, handler)| {
