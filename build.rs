@@ -48,7 +48,7 @@ fn main() {
         .iter()
         .map(|(name, mod_string)| {
             format!(
-                "{name}::build_collector(r\"#{mod_string}#\").expect(\"Failed to Build Collector for {mod_string}\")"
+                "{name}::build_collector(r#\"{mod_string}\"#).expect(r#\"Failed to Build Collector for {mod_string}\"#)"
             )
         })
         .collect::<Vec<_>>()

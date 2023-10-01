@@ -7,7 +7,7 @@ pub struct Plugins {
 impl Plugins {
     pub fn new() -> Self {
         let collectors = vec![
-            Foo::build_collector(r"#foo#").expect("Failed to Build Collector for foo")
+            Foo::build_collector(r#"foo"#).expect(r#"Failed to Build Collector for foo"#)
         ];
         Self { collectors }
     }
